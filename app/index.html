@@ -243,6 +243,27 @@ html[data-theme] body #app>.sec::after{content:'';flex:1;height:1px;background:c
 html[data-theme="alchemist"] body #app .alcol{display:block!important}
 /* arrange mode on the long page: keep Done/Reset reachable */
 html[data-theme] body.arr #arrbar{position:sticky;bottom:calc(env(safe-area-inset-bottom) + 64px);z-index:50;margin:10px 0 58px;padding:10px 12px;border-radius:14px;background:var(--card,#1e293b);border:1px solid rgba(255,255,255,.16);box-shadow:0 -6px 18px rgba(0,0,0,.4)}
+
+/* v71 meter */
+html body #meter small{margin-top:10px!important}
+html[data-theme="night"] body #meter{padding-bottom:10px!important}
+html[data-theme="night"] body #meter .seg b.on{box-shadow:0 0 4px var(--ml,#4dff9a)}
+html[data-theme="night"] body #meter .seg b.on.hi{box-shadow:0 0 4px #ffc94d}
+html[data-theme="night"] body #meter .seg b.on.pk{box-shadow:0 0 4px #ff5a4d}
+html[data-theme="alchemist"] body #meter .seg b.on,html[data-theme="alchemist"] body #meter .seg b.on.hi,html[data-theme="alchemist"] body #meter .seg b.on.pk,
+html[data-theme="streetfighter"] body #meter .seg b,html[data-theme="cyberpunk"] body #meter .seg b,html[data-theme="greekgod"] body #meter .seg b,html[data-theme="beige84"] body #meter .seg b,html[data-theme="colorarchive"] body #meter .seg b.hi,html[data-theme="colorarchive"] body #meter .seg b.pk{box-shadow:none!important}
+html[data-theme="colorarchive"] body #meter .seg b.on{box-shadow:inset 0 0 0 1px rgba(70,46,36,.45)!important}
+
+/* v72 mood */
+.mdt .ms{display:flex;align-items:flex-end;gap:4px;height:64px;margin-top:8px}
+.mdt .ms div{flex:1;display:flex;align-items:flex-end;height:100%}
+.mdt .ms i{display:block;width:100%;border-radius:3px 3px 0 0;background:var(--t-track2,rgba(128,128,128,.4));min-height:2px}
+.mdt .ms i.cur{background:var(--t-acc,#c48a60)}
+.mdt .ms i.na{background:transparent;border-bottom:1px dashed rgba(128,128,128,.4);min-height:1px}
+.mdt .mm{display:flex;justify-content:space-between;font-size:11px;opacity:.65;margin-top:6px}
+.mdt .note{font-size:12px;opacity:.7;margin-top:6px}
+.md .mq{font-size:15px;opacity:.9;margin:2px 0 12px}
+.md .note{font-size:12px;opacity:.7;margin-top:10px}
 </style><style id="sMid">:root{--bg:#EAE5DB;--card:#FBF9F5;--ink:#22211E;--mut:#8A8377;--blue:#7CC3DD;--green:#8FD1B1;--amber:#E4C47A}
 *{-webkit-font-smoothing:antialiased}
 body{font-family:-apple-system,'SF Pro Display','Inter',system-ui,sans-serif;font-weight:400;background:var(--bg);padding-left:16px;padding-right:16px}
@@ -970,21 +991,23 @@ function mdPending(){const B=D.mood;if(!B||B._ap)return;B._ap=1;B.log=B.log||{};
 function mdAvg(d){const a=(D.mood.log||{})[d];if(!a||!a.length)return null;return a.reduce((s,e)=>s+e.m,0)/a.length}
 function moodCard(sel){
  const B=D.mood; if(!B)return ''; mdPending();
- const T=D.date,isT=sel===T,ent=(B.log||{})[sel]||[];
- const when=isT?'Today':new Date(sel+'T12:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
- let o='<div class="card md" style="--md-on:'+mdOn()+'"><h2>Mood</h2>';
- if(isT){
-  o+='<div class="mq">How are you feeling right now?</div><div class="mf">'+[1,2,3,4,5].map(n=>'<button type="button" class="mb'+(MD.m===n?' on':'')+'" data-md="'+n+'" aria-pressed="'+(MD.m===n)+'" aria-label="'+n+' '+MD_LBL[n]+'">'+mdFace(n)+'<b>'+n+'</b></button>').join('')+'</div>';
-  o+='<div class="mn"><input type="text" id="mdNote" maxlength="200" placeholder="Add a note (optional)" value="'+esc(MD.note)+'" aria-label="Mood note"><button type="button" data-mdlog="1"'+(MD.m&&!MD.busy?'':' disabled')+'>Log</button></div>';
- }
- if(ent.length){
-  const av=ent.reduce((s,e)=>s+e.m,0)/ent.length;
-  o+='<div class="ml">'+ent.map(e=>'<div class="me"><span class="mt">'+esc(e.t)+'</span>'+mdFace(e.m)+'<span class="mx">'+esc(e.n||MD_LBL[e.m])+'</span><span class="mv">'+e.m+'</span></div>').join('')+'</div>';
-  o+='<div class="note">'+when+': '+ent.length+(ent.length===1?' entry':' entries')+', average '+av.toFixed(1)+'.</div>';
- } else o+='<div class="note">'+(isT?'No entries yet today. Tap a face whenever you like.':'No entries on '+when+'. That means nothing was logged, not a bad day.')+'</div>';
+ if(sel!==D.date)return '';   /* logging is for today only; history lives on Trends */
+ const ent=(B.log||{})[sel]||[];
+ let o='<div class="card md" data-mdl="'+(ent.length?1:0)+'" style="--md-on:'+mdOn()+'"><h2>Mood</h2>';
+ o+='<div class="mq">How are you feeling right now?</div><div class="mf">'+[1,2,3,4,5].map(n=>'<button type="button" class="mb'+(MD.m===n?' on':'')+'" data-md="'+n+'" aria-pressed="'+(MD.m===n)+'" aria-label="'+n+' '+MD_LBL[n]+'">'+mdFace(n)+'<b>'+n+'</b></button>').join('')+'</div>';
+ o+='<div class="mn"><input type="text" id="mdNote" maxlength="200" placeholder="Add a note (optional)" value="'+esc(MD.note)+'" aria-label="Mood note"><button type="button" data-mdlog="1"'+(MD.m&&!MD.busy?'':' disabled')+'>Log</button></div>';
+ o+='<div class="note">'+(ent.length?'Thanks for checking in. Add another any time.':'Tap a face whenever you like. There are no wrong answers.')+'</div></div>';
+ return o}
+function moodTrendCard(sel){
+ const B=D.mood; if(!B)return '';
  const days=[];for(let i=13;i>=0;i--)days.push(shift(sel,-i));
- o+='<div class="ms">'+days.map(d=>{const a=mdAvg(d);return '<div title="'+d+'">'+(a==null?'<i class="na"></i>':'<i class="'+(d===sel?'cur':'')+'" style="height:'+Math.max(8,Math.round(a/5*100))+'%"></i>')+'</div>'}).join('')+'</div>';
- o+='<div class="mm"><span>14 days, daily average</span><span>5 = great</span></div></div>';
+ const avs=days.map(d=>mdAvg(d)),n=avs.filter(a=>a!=null).length;
+ const lab=new Date(sel+'T12:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
+ let o='<div class="card mdt"><h2>Mood, 14 days to '+lab+'</h2>';
+ if(!n)return o+'<div class="note">Nothing logged in these 14 days. A day without a log is just a day off, not a bad day.</div></div>';
+ const say=days.map((d,i)=>avs[i]==null?'':new Date(d+'T12:00').toLocaleDateString(undefined,{month:'short',day:'numeric'})+' '+avs[i].toFixed(1)).filter(Boolean).join(', ');
+ o+='<div class="ms" role="img" aria-label="Daily average mood, last 14 days: '+esc(say)+'">'+days.map((d,i)=>{const a=avs[i];return '<div title="'+d+'">'+(a==null?'<i class="na"></i>':'<i class="'+(d===sel?'cur':'')+'" style="height:'+Math.max(8,Math.round(a/5*100))+'%"></i>')+'</div>'}).join('')+'</div>';
+ o+='<div class="mm"><span>Daily average</span><span>5 = great</span></div></div>';
  return o}
 function mdRedraw(){const el=document.querySelector('.md');if(!el)return;const t=document.createElement('div');t.innerHTML=moodCard(sel);const n=t.firstElementChild;if(n){el.replaceWith(n);if(typeof EM_INIT==='function')try{EM_INIT()}catch(e){}}}
 async function mdLog(){
@@ -992,7 +1015,7 @@ async function mdLog(){
  const m=MD.m,n=(MD.note||'').trim().slice(0,200),id='m'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);MD.busy=true;mdRedraw();
  try{const r=await fetch('api/mood',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json','x-heroarc':'1'},body:JSON.stringify({id:id,d:D.date,m:m,n:n})});if(!r.ok)throw new Error(r.status);
   MD.ids[id]=1;D.mood.log=D.mood.log||{};(D.mood.log[D.date]=D.mood.log[D.date]||[]).push({t:mdTime(new Date().toISOString()),m:m,n:n});MD.m=0;MD.note='';
-  if(typeof rfToast==='function')rfToast('Mood logged.')}
+  if(typeof rfToast==='function')rfToast('Thanks for sharing.')}
  catch(e){if(typeof rfToast==='function')rfToast("Couldn't save that. Check your connection and tap Log again.")}
  MD.busy=false;mdRedraw()}
 document.addEventListener('click',e=>{const t=e.target;if(!t||!t.closest)return;
@@ -1059,7 +1082,7 @@ mdFace=function(m){return AL()?alFace(m,''):__alFaceV0(m)};
 
 /* ---------- section tabs + collapsing cards (mockup) ---------- */
 const TABS=[['today','Today'],['log','Log'],['trends','Trends']];
-const TAB_OF=[[/^weight, 14/i,'trends'],[/^health/i,'today'],[/^weight and activity/i,'today'],[/^nutrition/i,'today'],[/^activity/i,'today'],[/^training/i,'log'],[/^habits/i,'log'],[/^mood/i,'log'],[/^weight/i,'log'],[/^energy/i,'trends'],[/^weekly/i,'trends'],[/^sleep/i,'trends']];
+const TAB_OF=[[/^weight, 14/i,'trends'],[/^mood, 14/i,'trends'],[/^health/i,'today'],[/^weight and activity/i,'today'],[/^nutrition/i,'today'],[/^activity/i,'today'],[/^training/i,'log'],[/^habits/i,'log'],[/^mood/i,'log'],[/^weight/i,'log'],[/^energy/i,'trends'],[/^weekly/i,'trends'],[/^sleep/i,'trends']];
 let TAB='today';
 const CXO={};   /* explicit open(true)/closed(false) per card class, until the page reloads */
 function tabOfCard(c){if(c.classList.contains('alcol'))return 'trends';const h=c.querySelector('h2');const t=h?h.textContent.trim():'';for(const [re,k] of TAB_OF)if(re.test(t))return k;return 'today'}
@@ -1067,7 +1090,7 @@ function cxInfo(c){const t=c.textContent.replace(/\s+/g,' ');
  if(c.classList.contains('tr')){const w=t.match(/(\d+) workouts? this week · goal (\d+)/);const done=/Change/.test(t);const rest=/Rest day/.test(t);
   return {key:'tr',done,sum:(rest?'Rest day logged':done?'Logged today':'Not logged yet')+(w?' · '+w[1]+' of '+w[2]+' this week':'')}}
  if(c.classList.contains('hb')){const m=t.match(/Today (\d+) of (\d+)/);return {key:'hb',done:!!m&&m[1]===m[2]&&+m[2]>0,sum:m?'Today '+m[1]+' of '+m[2]+' done':'Habits'}}
- if(c.classList.contains('md')){const m=t.match(/Today: (\d+) entr\w+, average (\d(?:\.\d)?)/);return {key:'md',done:!!m&&+m[1]>0,sum:m?'Today: '+m[1]+(+m[1]===1?' entry':' entries')+' · average '+m[2]:'Not logged yet'}}
+ if(c.classList.contains('md')){const d=c.dataset.mdl==='1';return {key:'md',done:d,sum:d?'Logged today. Thank you.':'Tap a face when you are ready'}}
  return null}
 function tabsApply(){
  const app=document.getElementById('app');if(!app)return;
@@ -1380,7 +1403,7 @@ ${quoteCard(sel)}<div class="card bt" data-t="${BT.t}"><h2 class="btt"><button t
  <div class="row"><span class="mut">Actual weight trend</span><b style="font-size:17px">${wchg==null?'—':(wchg>0?'+':wchg<0?'−':'')+Math.abs(wchg).toFixed(1)+' lb'}</b></div>
  <small class="mut">${n<4?'Fewer than 4 logged days, so treat this as rough. ':''}Predicted = net kcal ÷ 3,500. Actual = a trend line through every weigh-in that week (needs 3 or more), including this morning’s, so one odd day doesn’t swing it. Daily weight swings of 1–3 lb are normal water changes, so judge by trend over a few weeks.</small>`})()}</div></div>
 <div class="card"><h2>Weight, 14 days to ${new Date(sel+'T12:00').toLocaleDateString(undefined,{month:'short',day:'numeric'})}</h2><div class="row"><b>${wt==null?'—':wt.toFixed(1)+' lb'}</b><span class="mut">${wtTrendTxt(win)}</span></div><svg class="chart" data-s="weight" viewBox="0 0 300 90" preserveAspectRatio="none">${line(win,'weight','var(--t-acc)',wmin,wmax)}</svg><small class="mut">Trend = a straight line through every weigh-in in these 14 days (needs 3 or more). Daily swings of 1–3 lb are normal water changes.</small></div>
-<div class="card"><h2>Sleep and readiness, 14 days</h2><svg class="chart" data-s="sleep,readiness" viewBox="0 0 300 90" preserveAspectRatio="none">${line(win,'sleep','var(--t-acc2)',50,100)}${line(win,'readiness','var(--t-acc)',50,100)}</svg><div class="legend"><span><i class="dot" style="background:var(--t-acc2)"></i>Sleep</span><span><i class="dot" style="background:var(--t-acc)"></i>Readiness</span></div></div>`;
+<div class="card"><h2>Sleep and readiness, 14 days</h2><svg class="chart" data-s="sleep,readiness" viewBox="0 0 300 90" preserveAspectRatio="none">${line(win,'sleep','var(--t-acc2)',50,100)}${line(win,'readiness','var(--t-acc)',50,100)}</svg><div class="legend"><span><i class="dot" style="background:var(--t-acc2)"></i>Sleep</span><span><i class="dot" style="background:var(--t-acc)"></i>Readiness</span></div></div>${moodTrendCard(sel)}`;
 }
 $('#prev').onclick=()=>{sel=shift(sel,-1);view()};$('#next').onclick=()=>{sel=shift(sel,1);view()};$('#tdy').onclick=()=>{sel=D.date;view()};
 $('#pick').onchange=e=>{if(e.target.value){sel=e.target.value;view()}};
