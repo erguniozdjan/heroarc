@@ -2,12 +2,16 @@
 """Log (or correct) a weight for a date, then refresh the app.
 usage: log_weight.py 189.2 [--date YYYY-MM-DD]"""
 import argparse, datetime as dt, urllib.parse, sys
-from config import now, env
+from config import now, env, STORAGE
 from google_auth import token, api
 import app_push
 ap = argparse.ArgumentParser(); ap.add_argument('lb', type=float); ap.add_argument('--date'); a = ap.parse_args()
 if not 50 < a.lb < 700: sys.exit(f'{a.lb} lb does not look like a body weight; not logging.')
 d = a.date or now().date().isoformat()
+if STORAGE == 'notion':
+    import notion_store as NS
+    verb = NS.set_weight(d, round(a.lb, 1)).capitalize(); NS.fresh()
+    print(f'{verb} {a.lb} lb for {d}. App pushed: {app_push.safe_push()}'); raise SystemExit(0)
 S = env('SHEET_ID', required=True); ts = token(); U = f'https://sheets.googleapis.com/v4/spreadsheets/{S}/values/'
 v = api('GET', U + urllib.parse.quote("'Weight Log'!A2:B1000") + '?valueRenderOption=UNFORMATTED_VALUE', ts).get('values', [])
 rows = {(dt.date(1899, 12, 30) + dt.timedelta(days=int(r[0]))).isoformat(): i + 2 for i, r in enumerate(v) if r and isinstance(r[0], (int, float))}

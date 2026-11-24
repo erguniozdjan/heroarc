@@ -1,6 +1,6 @@
 """Build the app snapshot from the sheet and push it to Cloudflare KV."""
 import json, datetime as dt, urllib.request, urllib.parse
-from config import env, now
+from config import env, now, STORAGE
 import google_auth
 
 def serial(v): return (dt.date(1899, 12, 30) + dt.timedelta(days=int(v))).isoformat()
@@ -8,6 +8,10 @@ def serial(v): return (dt.date(1899, 12, 30) + dt.timedelta(days=int(v))).isofor
 def build(read=None, fmt_read=None):
     """read(range)->rows is injectable so this can be tested without Google."""
     ts = U = None
+    if read is None and STORAGE == 'notion':
+        import notion_store as NS
+        NS.fresh(); read = NS.make_read()
+        if fmt_read is None: fmt_read = read
     if read is None:
         S = env('SHEET_ID', required=True); ts = google_auth.token()
         U = f'https://sheets.googleapis.com/v4/spreadsheets/{S}/values/'
@@ -95,6 +99,7 @@ def push(data):
 def drain_and_push():
     """Move edits made in the app (training taps, habit taps and edits, weight, goals, plan) from the small KV queue into the
     sheet, rebuild the snapshot, push it, and only then drop what was drained. Event ids make a re-run harmless."""
+    if STORAGE == 'notion': return _drain_notion()
     import training as T, habits as HB, mood as MD
     from kvstore import kv
     S = env('SHEET_ID', required=True); ts = google_auth.token()
@@ -164,6 +169,54 @@ def drain_and_push():
             if 'error' in r: raise RuntimeError(str(r)[:160])
             done['plan'] = pp['id']
     except Exception as e: print('plan drain failed:', type(e).__name__, str(e)[:120])
+    ok = safe_push()
+    if not ok: return ok
+    def _clean(label, fn):
+        try: fn()
+        except Exception as e: print(label, 'queue cleanup failed:', type(e).__name__)
+    if done.get('train'): _clean('training', lambda: T.drain_end(done['train'], kv))
+    if done.get('mood'): _clean('mood', lambda: MD.drain_end(done['mood'], kv))
+    if done.get('hab'): _clean('habit', lambda: HB.drain_end(done['hab'], kv))
+    if done.get('cfg'): _clean('habit config', lambda: HB.finish_config(done['cfg'], kv))
+    if done.get('goals'): _clean('goals', lambda: (json.loads(kv('GET', 'goals_pending') or 'null') or {}).get('id') == done['goals'] and kv('PUT', 'goals_pending', 'null'))
+    if done.get('weight'): _clean('weight', lambda: kv('PUT', 'weight_pending', json.dumps([x for x in json.loads(kv('GET', 'weight_pending') or '[]') if x.get('id') not in set(done['weight'])])))
+    if done.get('plan'): _clean('plan', lambda: (json.loads(kv('GET', 'plan_pending') or 'null') or {}).get('id') == done['plan'] and kv('PUT', 'plan_pending', 'null'))
+    return ok
+
+def _drain_notion():
+    """Same queue as the sheet version, written to Notion instead. A tap is only removed from the queue after the snapshot containing it is pushed;
+    if a Notion write fails the tap stays queued and is retried on the next run (event ids make that harmless)."""
+    import training as T, habits as HB, mood as MD, notion_store as NS
+    from kvstore import kv
+    done = {}
+    def step(label, fn):
+        try: fn()
+        except Exception as e: print(label, 'drain failed:', type(e).__name__, str(e)[:140])
+    def train():
+        if T.read_queue(kv):
+            have = {NS.rt(p, 'Event id').split('|')[0] for p in NS.query('Training')}
+            done['train'] = T.drain_begin(lambda rows: NS.add_training_rows(rows), have, kv)
+    def habits():
+        done['cfg'] = HB.apply_config(lambda rows: NS.write_habit_list(rows), kv)
+        if HB.read_queue(kv):
+            have = {NS.rt(p, 'Event id') for p in NS.query('Habit Log')}
+            done['hab'] = HB.drain_begin(lambda rows: NS.add_habit_rows(rows), have, kv)
+    def mood():
+        if MD.read_queue(kv):
+            have = {NS.rt(p, 'Event id') for p in NS.query('Mood Log')}
+            done['mood'] = MD.drain_begin(lambda rows: NS.add_mood_rows(rows), have, kv)
+    def goals():
+        gp = json.loads(kv('GET', 'goals_pending') or 'null')
+        if gp and isinstance(gp, dict) and gp.get('id'): NS.set_goals(gp['kcal'], gp['protein']); done['goals'] = gp['id']
+    def weight():
+        wp = json.loads(kv('GET', 'weight_pending') or '[]')
+        if wp:
+            for x in sorted([x for x in wp if x.get('id')], key=lambda x: x['d']): NS.set_weight(x['d'], round(float(x['w']), 1), 'app:' + x['id'])
+            done['weight'] = [x['id'] for x in wp if x.get('id')]
+    def plan():
+        pp = json.loads(kv('GET', 'plan_pending') or 'null')
+        if pp and T.valid_plan(pp): NS.write_plan(T.plan_rows(pp), pp['id'], now().strftime('%Y-%m-%d %H:%M:%S')); done['plan'] = pp['id']
+    for label, fn in (('training', train), ('habit', habits), ('mood', mood), ('goals', goals), ('weight', weight), ('plan', plan)): step(label, fn)
     ok = safe_push()
     if not ok: return ok
     def _clean(label, fn):

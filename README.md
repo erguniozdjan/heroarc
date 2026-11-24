@@ -1,6 +1,6 @@
 # HeroArc
 
-A private health dashboard for your phone. Your Oura ring, weight, food and training go into **one Google Sheet that you own**, and a small app shows them on a locked-down web page that only your email can open.
+A private health dashboard for your phone. Your Oura ring, weight, food and training go into **one Google Sheet or Notion workspace that you own**, and a small app shows them on a locked-down web page that only your email can open.
 
 - **Runs on your own accounts.** Google, Oura and Cloudflare are all yours. Nothing is shared with anyone else, and nothing here phones home.
 - **Costs nothing** on free plans (Cloudflare Workers, Google Sheets, Oura developer app). Any AI you use to log food is your own.
@@ -66,6 +66,34 @@ Edit `.env`: set `TIMEZONE`, your calorie and protein goals, and `ALLOWED_EMAIL`
 - Two ways to use it: run `python3 scripts/setup_sheet.py` (builds a plain version in your Google account), or open Google Sheets, choose File > Import > Upload the .xlsx, then copy the sheet ID from its address into `.env` as `SHEET_ID=...`.
 - Rebuild it from source with `pip install openpyxl` then `python3 tools/build_template_xlsx.py`.
 - Note: `setup_sheet.py` makes a simpler, unstyled sheet with goals typed on the Settings tab. The .xlsx adds the Calculator and the styling.
+
+## Choose where your data lives: Google Sheets (default) or Notion
+
+HeroArc can keep your data in **a Google Sheet** (the default, everything above) **or in Notion**. Pick one at setup; the app looks the same either way.
+You switch with one line in `.env`: `STORAGE=sheets` (default) or `STORAGE=notion`. This is the `notion-backend` branch; `main` is sheets only.
+
+**What is the same:** the app, the logging scripts (`log_food.py`, `log_weight.py`, `log_training.py`), `sync.py`, the Cloudflare setup and the gate checks. Edits made in the app still go to a small queue on Cloudflare and are copied into your storage every sync, and a tap is only removed from the queue once it is safely written.
+
+**With Notion, the first place writes land is Notion.** Nothing is ever deleted by the scripts. Every write is keyed on an event id or a date, so running anything twice never duplicates a row.
+
+### Notion setup (about 10 minutes, instead of step 2 "Google")
+1. Go to notion.so/profile/integrations, create an **internal** integration, and give it permission to read, update and insert content (it does not need delete).
+2. Put the secret in `.env` as `NOTION_TOKEN=...` (never paste it into chat, a screenshot or an AI prompt).
+3. Create an empty page in Notion (for example "HeroArc"). Open it, click "..." then Connections, and add your integration.
+4. Copy the page id (the last 32 characters of the page's URL) into `.env` as `NOTION_PARENT_PAGE=...`.
+5. Run `python3 scripts/setup_notion.py`. It creates ten tables under that page (Meals, Weight, Oura Daily, Training, Plan, Plan History, Habits, Habit Log, Mood Log, Settings), saves their ids to `.env` and sets `STORAGE=notion`. It is safe to run again; existing tables are skipped.
+6. Set your calories, protein, steps and active-calorie goals in the **Settings** table (or set `CALORIE_GOAL`, `PROTEIN_GOAL` etc. in `.env` before step 5 to seed them).
+7. Carry on with Oura and Cloudflare (steps 3 and 4 below). Google is not needed in this mode: you can skip step 2 and the Google OAuth client.
+
+### Moving between the two
+- There is no automatic migration yet. Switching `STORAGE` points the app at the other store, which will start empty (the Oura sync can backfill with `python3 scripts/sync.py --days 60`).
+- If you already run on a sheet and want Notion too, ask your AI to copy the rows across table by table; every table has the same columns as its sheet tab.
+
+### Notion limits to know about
+- Notion's API allows about three requests a second. Reads of the whole history are slower than a sheet, so a sync takes a few seconds longer.
+- The API cannot create formula columns, chart views or table footers on an existing table. Add averages, bars and charts in Notion by hand if you want them.
+- Delete nothing in the tables while the app is running. The app reads every row; a removed Settings row falls back to the defaults.
+- **Not tested against a real Notion workspace on this branch.** It was tested end to end against a local stand-in for the Notion API (all write paths, the snapshot builder, the queue drain, retries and idempotence) and compared with `main` in sheets mode (identical snapshot). Your first real run is the real test; report anything odd.
 
 ## Daily use (the logging scripts)
 Run these from the folder, or have your AI run them for you:

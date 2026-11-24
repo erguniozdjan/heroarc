@@ -30,5 +30,7 @@ def set_env(k, v):
     open(ENV_PATH, 'w').write('\n'.join(out).rstrip('\n') + '\n')
     os.chmod(ENV_PATH, 0o600); os.environ[k] = str(v)
 
+STORAGE = env('STORAGE', 'sheets').strip().lower()   # 'sheets' (default) or 'notion'
+if STORAGE not in ('sheets', 'notion'): sys.exit("STORAGE in .env must be 'sheets' or 'notion'.")
 TZ = ZoneInfo(env('TIMEZONE', 'UTC'))
 def now(): return dt.datetime.now(TZ)

@@ -1,6 +1,6 @@
 """Pull recent Oura data into the Oura tab (upsert by date), then push the app snapshot."""
 import json, time, os, datetime as dt, urllib.request, urllib.parse
-from config import env, ROOT, now
+from config import env, ROOT, now, STORAGE
 from google_auth import token, api
 TOK = os.path.join(ROOT, 'oura', 'tokens.json')
 UA = {'User-Agent': 'HeroArc/1.0'}
@@ -27,8 +27,9 @@ def tod(iso):
     return round((hh * 3600 + mm * 60 + ss) / 86400, 6)
 
 def sync(days=14):
-    S = env('SHEET_ID', required=True); ts = token()
-    U = f'https://sheets.googleapis.com/v4/spreadsheets/{S}'
+    if STORAGE != 'notion':
+        S = env('SHEET_ID', required=True); ts = token()
+        U = f'https://sheets.googleapis.com/v4/spreadsheets/{S}'
     a = access(); today = now().date(); s = (today - dt.timedelta(days=days)).isoformat(); e = (today + dt.timedelta(days=1)).isoformat()
     ds = {x['day']: x for x in og(a, 'daily_sleep', s, e)}; rd = {x['day']: x for x in og(a, 'daily_readiness', s, e)}
     ac = {x['day']: x for x in og(a, 'daily_activity', s, e)}
@@ -47,6 +48,14 @@ def sync(days=14):
             (sd.get('stress_high') or 0) // 60 if sd.get('stress_high') is not None else '',
             (sd.get('recovery_high') or 0) // 60 if sd.get('recovery_high') is not None else '', sd.get('day_summary') or '']
     if not new: return 'no Oura data in range (is the ring synced in the Oura app?)'
+    if STORAGE == 'notion':
+        import notion_store as NS
+        n_changed = NS.upsert_oura(list(new.values()))
+        out = f"{len(new)} days upserted ({min(new)}..{max(new)}) to Notion, {n_changed} changed"
+        try:
+            import app_push; app_push.drain_and_push()
+        except Exception as ex: out += f' | app push failed: {type(ex).__name__}: {ex}'
+        return out
     col = api('GET', U + '/values/Oura!A:A?valueRenderOption=UNFORMATTED_VALUE', ts).get('values', [])
     rowof = {}
     for i, r in enumerate(col, 1):
